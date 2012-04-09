@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Burn Canvas</title>
+	<style type="text/css">
+		body { margin: 0; overflow: hidden }
+		p { margin: 10px 0 }
+		a { color: #bbf }
+		nav { position: relative; 
+			left:20px;
+			width: 350px; background: #000;
+			opacity: 0.7; padding: 0 20px; color: #fff;
+			font-family: monospace; font-size: 16px }
+		div#error { position: absolute; width: 30%; left: 35%;
+			top: 50%; padding: 10px; border: 1px solid #633;
+			background: #fdd; margin-top: -50px;
+			font-size: 16px; font-weight: bold; color: #422 }
+	</style>
+</head>
+<body>
+	<canvas id="view"></canvas>
+	<div id="error">
+		Error: This application requires JavaScript to run.
+	</div>
+	<nav>
+		<p><a href="#" id="effectButton0" style="color: #fff">burn</a></p>
+		<p><a href="#" id="effectButton1">melt</a></p>
+		<p><a href="#" id="effectButton2">blue circles</a></p>
+		<p><a href="#" id="effectButton3">fade</a></p>
+	</nav>
+<script>
+
+// Copyright by Chris Pasek (Ryczow, Poland, 50,42313N 19,58931E)
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, version 2 or 3.
+
+// TD: Messed around with quite a bit, for learning.
+
+// ------------------------------------------------------------
+// Constants
+var MAX_REACH = 100;
+var STEP_MILLISECONDS = 8;
+var BOTTOM_BORDER_HEIGHT = 150;
+var MINIMUM_REACH = 30;
+var INTENSITY_FACTOR_RED_MULTIPLIER = 10;
+var INTENSITY_FACTOR_GREEN_MULTIPLIER = 21.23553;
+var INTENSITY_FACTOR_BLUE_MULTIPLIER = 46.72232;
+
+// ------------------------------------------------------------
+// Global Variables
+var effects = [];
+
+// ------------------------------------------------------------
+function error(msg) {
+	try {
+		var div = document.getElementById("error");
+		if (msg) {
+			div.style.display = "block";
+			div.innerText = "Error: " + msg;
+		} else {
+			div.style.display = "none";
+		}
+	} catch(e) {
+		if (msg) { alert("Error: " + msg); }
+	}
+}
+
+// ------------------------------------------------------------
+// BURN BURN BURN BURN
+effects[effects.length] = function(imageData, centerX, centerY, radius) {
+
+	// This function will mess with our array of imageData.
+	// This array has four integer entries for each pixel.
+	// red, green, blue, alpha
+	// value of each is 0 - 255
+	// 
+	// So we can move along to the next pixel by adding 4 to our array position.
+
+	var idata = imageData.data;
+	var regionWidth = imageData.width;
+	var positionInDataArray = 0;
+	var colorIntensity = 0;
+	var intensityFactor = 0;
+	var horizDistFromCenter = 0;
+	var verticalDistFromCenter;
+	var x;
+	var y;
+
+	for (y = 0; y < imageData.height; y++) {
+		verticalDistFromCenter = y - centerY;
+		for (x = 0; x < regionWidth; x++) {
+			horizDistFromCenter = x - centerX;
+			// When we are on the edge of the circle, intensityFactor = 0
+			// When we get outside the circle, then intensityFactor is less than 0
+			// When we are at the center of the  circle, then intensityFactor is at its max, which is 1.
+			intensityFactor = 1 - (horizDistFromCenter * horizDistFromCenter + verticalDistFromCenter * verticalDistFromCenter) / (radius * radius);
+			if (intensityFactor <= 0) {
+				// We don't want to touch this point. It is not in the circle.
+				// move on to the next point.
+				positionInDataArray += 4;
+				// and go to the next go-round of the 'for' loop.
+				continue;
+			}
+			// because intensityFactor is less than one, this calculation ends up positive
+			intensityFactor = 6 * (Math.pow(intensityFactor, 2) - Math.pow(intensityFactor, 3));
+
+			// red
+			colorIntensity = idata[positionInDataArray] - (intensityFactor * INTENSITY_FACTOR_RED_MULTIPLIER);
+			if (colorIntensity < 0) { 
+				colorIntensity += 256; 
+			}
+			idata[positionInDataArray] = colorIntensity;
+
+			// green
+			positionInDataArray++;
+			colorIntensity = idata[positionInDataArray] - (intensityFactor * INTENSITY_FACTOR_GREEN_MULTIPLIER);
+			if (colorIntensity < 0) { 
+				colorIntensity += 256; 
+			}
+			idata[positionInDataArray] = colorIntensity;
+
+			// blue
+			positionInDataArray++;
+			colorIntensity = idata[positionInDataArray] - (intensityFactor * INTENSITY_FACTOR_BLUE_MULTIPLIER);
+			if (colorIntensity < 0) { 
+				colorIntensity += 256; 
+			}
+			idata[positionInDataArray] = colorIntensity;
+
+			// skipping the alpha...
+			positionInDataArray++;
+			idata[positionInDataArray] = 255;
+
+			// moving to the next point
+			positionInDataArray++;
+		}
+	}
+};
+
+// ------------------------------------------------------------
+// MELT MELT MELT MELT
+effects[effects.length] = function(imageData, centerX, centerY, radius) {
+	
+	var x;
+	var y;
+	var positionInDataArray;
+	var horizDistFromCenter;
+	var verticalDistFromCenter;
+	var intensityFactor;
+
+	for (y = imageData.height-1; y >= 1; y--) {
+		for (x = 0; x < imageData.width; x++) {
+			positionInDataArray = 4 * (imageData.width * y + x);
+			horizDistFromCenter = x - centerX;
+			verticalDistFromCenter = y - centerY;
+
+			intensityFactor = 1 - (horizDistFromCenter * horizDistFromCenter + verticalDistFromCenter * verticalDistFromCenter)/(radius * radius);
+			if (intensityFactor < 0) { 
+				// If we are outside the circle, we won't do anything.
+				continue;
+			}
+			intensityFactor = Math.pow(intensityFactor, 2);
+
+			// We look at the pixel 1 point above us... it melts down in our direction.
+			// Notice that we started one row down from the top.
+
+			// red
+			imageData.data[positionInDataArray] += intensityFactor * (imageData.data[positionInDataArray - (imageData.width * 4)] - 
+				imageData.data[positionInDataArray]);
+			// gren
+			imageData.data[positionInDataArray + 1] += intensityFactor * (imageData.data[positionInDataArray + 1 - (imageData.width * 4)] - imageData.data[positionInDataArray + 1]);
+			// blue
+			imageData.data[positionInDataArray + 2] += intensityFactor * (imageData.data[positionInDataArray + 2 - (imageData.width * 4)] - imageData.data[positionInDataArray + 2]);
+			// alpha
+			imageData.data[positionInDataArray + 3] = 255;
+		}
+	}
+};
+
+// ------------------------------------------------------------
+// blue circles
+effects[effects.length] = function(imageData, centerX, centerY, radius) {
+	
+	var x;
+	var y;
+	var positionInDataArray;
+	var horizDistFromCenter;
+	var verticalDistFromCenter;
+	var intensityFactor;
+
+	for (y = 0; y < imageData.height; y++) {
+		for (x = 0; x < imageData.width; x++) {
+			positionInDataArray = 4 * (imageData.width * y + x);
+			horizDistFromCenter = x - centerX;
+			verticalDistFromCenter = y - centerY;
+
+			intensityFactor = 1 - (horizDistFromCenter * horizDistFromCenter + verticalDistFromCenter * verticalDistFromCenter)/(radius * radius);
+			if ((intensityFactor < 0) || (intensityFactor > .1)) { 
+				// only do something if we are on the edge
+				continue; 
+			}
+
+			// We look at the pixel 1 point above us... it melts down in our direction.
+			// Notice that we started one row down from the top.
+
+			// red
+			imageData.data[positionInDataArray] = 0;
+			// gren
+			imageData.data[positionInDataArray + 1] = 0;
+			// blue
+			imageData.data[positionInDataArray + 2] = 255;
+		}
+	}
+};
+
+// ------------------------------------------------------------
+// fade
+effects[effects.length] = function(imageData, centerX, centerY, radius) {
+
+	// This function will mess with our array of imageData.
+	// This array has four integer entries for each pixel.
+	// red, green, blue, alpha
+	// value of each is 0 - 255
+	// 
+	// So we can move along to the next pixel by adding 4 to our array position.
+
+	var idata = imageData.data;
+	var regionWidth = imageData.width;
+	var positionInDataArray = 0;
+	var colorIntensity = 0;
+	var intensityFactor = 0;
+	var horizDistFromCenter = 0;
+	var verticalDistFromCenter;
+	var x;
+	var y;
+	var curAlpha;
+	var newAlpha;
+
+	for (y = 0; y < imageData.height; y++) {
+		verticalDistFromCenter = y - centerY;
+		for (x = 0; x < regionWidth; x++) {
+			horizDistFromCenter = x - centerX;
+			// When we are on the edge of the circle, intensityFactor = 0
+			// When we get outside the circle, then intensityFactor is less than 0
+			// When we are at the center of the  circle, then intensityFactor is at its max, which is 1.
+			intensityFactor = 1 - (horizDistFromCenter * horizDistFromCenter + verticalDistFromCenter * verticalDistFromCenter) / (radius * radius);
+			if (intensityFactor <= 0) {
+				// We don't want to touch this point. It is not in the circle.
+				// move on to the next point.
+				positionInDataArray += 4;
+				// and go to the next go-round of the 'for' loop.
+				continue;
+			}
+
+			// skip red
+
+			// skip green
+			positionInDataArray++;
+
+			// skip blue
+			positionInDataArray++;
+
+			// alpha
+			positionInDataArray++;
+			curAlpha = idata[positionInDataArray];
+			newAlpha = curAlpha - 5;
+			if (newAlpha < 0) {
+				newAlpha = 0;
+			}
+			idata[positionInDataArray] = newAlpha;
+
+			// moving to the next point
+			positionInDataArray++;
+		}
+	}
+};
+
+// ------------------------------------------------------------
+function createOurSuperThing() {
+	
+	var view;
+	var effectNumber = 0;
+	var currentEffectNumber;
+	var canvasWidth;
+	var canvasHeight;
+	var reach = 50;
+	var mouseX = -1;
+	var mouseY = -1;
+
+	try {
+		view = document.getElementById("view").getContext("2d");
+	} catch(err) {
+		throw "Your web browser does not support " + 
+			"the <canvas> element!";
+	}
+
+	function addClickHandlerToEffectButton(n) {
+		var b = document.getElementById("effectButton" + n);
+		b.onclick = function() {
+			effectNumber = n;
+			var currentEffectNumber;
+			for (currentEffectNumber = 0; currentEffectNumber < effects.length; currentEffectNumber++) {
+				document.getElementById("effectButton" + currentEffectNumber).style.color =
+					(currentEffectNumber === n) ? 'white' : '';
+			}
+			return false;
+		};
+	}
+
+	for (currentEffectNumber = 0; currentEffectNumber < effects.length; currentEffectNumber++) { 
+		addClickHandlerToEffectButton(currentEffectNumber); 
+	}
+
+	document.getElementsByTagName('nav')[0].onmousedown = function(e) {
+		e.stopPropagation();
+	};
+
+	canvasWidth = view.canvas.width;
+	canvasHeight = view.canvas.height;
+
+	function resize() {
+		view.canvas.width = canvasWidth = window.innerWidth;
+		view.canvas.height = canvasHeight = window.innerHeight - BOTTOM_BORDER_HEIGHT;
+		view.fillStyle = "rgb(255,255,255)";
+		// clear out the canvas
+		view.fillRect(0, 0, canvasWidth, canvasHeight);
+	}
+
+	resize();
+	
+	window.onresize = resize;
+
+	function drawAFrame() {
+		if (mouseX < 0) { 
+			return; 
+		}
+		
+		var xLow = mouseX - reach;
+		var xHigh = mouseX + reach;
+		var yLow = mouseY - reach;
+		var yHigh = mouseY + reach;
+		var imageData;
+
+		if (xLow < 0) { 
+			xLow = 0; 
+		}
+		if (yLow < 0) { 
+			yLow = 0; 
+		}
+		if (xLow > canvasWidth - 1) { 
+			return; 
+		}
+		if (yLow > canvasHeight - 1) { 
+			return; 
+		}
+
+		if (xHigh < xLow + 1) { 
+			xHigh = xLow + 1; 
+		}
+		if (yHigh < yLow + 1) { 
+			yHigh = yLow + 1; 
+		}
+		if (xHigh > canvasWidth) { 
+			xHigh = canvasWidth; 
+		}
+		if (yHigh > canvasHeight) { 
+			yHigh = canvasHeight; 
+		}
+
+		// get the imageData for the square we are going to affect
+		imageData = view.getImageData(xLow, yLow, xHigh - xLow, yHigh - yLow);
+		// run the effect, which changes the imageData we got
+		effects[effectNumber](imageData, mouseX - xLow, mouseY - yLow, reach);
+		// stuff the imageData back into the canvas
+		view.putImageData(imageData, xLow, yLow);
+		
+		if (reach < MAX_REACH) { 
+			reach++; 
+		}
+
+	}
+
+	function heyTheMouseMoved(e) {
+		if (e.changedTouches &&
+			(e.changedTouches.length >= 1)) {
+				e = e.changedTouches[0];
+		}
+		mouseX = e.pageX;
+		mouseY = e.pageY;
+		reach = MINIMUM_REACH;
+		return false;
+	}
+
+	document.addEventListener('mousemove', heyTheMouseMoved, false);
+	document.addEventListener('touchmove', heyTheMouseMoved, false);
+
+	function preventDefaultProcessing(e) {
+		try { e.preventDefault(); } catch(err) {}
+		return false;
+	}
+
+	document.addEventListener('mousedown', preventDefaultProcessing, false);
+	document.addEventListener('touchstart', preventDefaultProcessing, false);
+	
+	return {
+		// This is what we expose publicly.
+		drawAFrame: drawAFrame
+	};
+
+}
+
+// ------------------------------------------------------------
+function goGoGo() {
+	var ourSuperThing = null;
+	function step() {
+		try {
+			if (ourSuperThing === null) {
+				ourSuperThing = createOurSuperThing();
+			} else {
+				ourSuperThing.drawAFrame();
+			}
+			setTimeout(step, STEP_MILLISECONDS);
+			error();
+		} catch (err) {
+			error(err);
+		}
+	}
+	step();
+}
+
+// ------------------------------------------------------------
+goGoGo();
+
+</script>
+
+</body>
+</html>
+

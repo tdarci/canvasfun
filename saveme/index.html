@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta charset="utf-8" />
+	<title>Burn Canvas</title>
+	<style type="text/css">
+		body { margin: 0; overflow: hidden }
+		p { margin: 10px 0 }
+		a { color: #bbf }
+		nav { position: relative; 
+			left:20px;
+			width: 350px; background: #000;
+			opacity: 0.7; padding: 0 20px; color: #fff;
+			font-family: monospace; font-size: 12px }
+		div#error { position: absolute; width: 30%; left: 35%;
+			top: 50%; padding: 10px; border: 1px solid #633;
+			background: #fdd; margin-top: -50px;
+			font-size: 16px; font-weight: bold; color: #422 }
+	</style>
+</head>
+<body>
+	<canvas id="view"></canvas>
+	<div id="error">
+		Error: This application requires JavaScript to run.
+	</div>
+	<nav>
+		<p>
+			A test of local pixel-based modifications of
+			an HTML5 canvas. Drag around the screen, change effects:
+			<a href="#" id="effectButton0" style="color: #fff">burn</a>,
+			<a href="#" id="effectButton1">melt</a>.
+		</p>
+		<p>
+			The code is open-source, see more at
+			<a href="http://guciek.github.com"
+				>guciek.github.com</a>.
+		</p>
+	</nav>
+<script>
+
+// Copyright by Chris Pasek (Ryczow, Poland, 50,42313N 19,58931E)
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, version 2 or 3.
+
+// ------------------------------------------------------------
+// Constants
+var MAX_REACH = 100;
+var STEP_MILLISECONDS = 8;
+var BOTTOM_BORDER_HEIGHT = 150;
+var MINIMUM_REACH = 50;
+
+// ------------------------------------------------------------
+// Global Variables
+var effects = [];
+
+// ------------------------------------------------------------
+function error(msg) {
+	try {
+		var div = document.getElementById("error");
+		if (msg) {
+			div.style.display = "block";
+			div.innerText = "Error: " + msg;
+		} else {
+			div.style.display = "none";
+		}
+	} catch(e) {
+		if (msg) { alert("Error: " + msg); }
+	}
+}
+
+// ------------------------------------------------------------
+// BURN BURN BURN BURN
+effects[effects.length] = function(imageData, centerX, centerY, radius) {
+
+	var idata = imageData.data;
+	var w = imageData.width;
+	var rr = 1/(radius * radius);
+	var pos = 0;
+	var t = 0;
+	var v = 0;
+	var horizDistFromCenter = 0;
+	var verticalDistFromCenter;
+	var vv = 0;
+	var x;
+	var y;
+
+	for (y = 0; y < imageData.height; y++) {
+		verticalDistFromCenter = y - centerY;
+		for (x = 0; x < w; x++) {
+			horizDistFromCenter = x - centerX;
+			v = 1 - (horizDistFromCenter * horizDistFromCenter + verticalDistFromCenter * verticalDistFromCenter) * rr;
+			if (v <= 0) {
+				pos += 4;
+				continue;
+			}
+			vv = v * v;
+			v = 6 * (vv - vv * v);
+			t = idata[pos];
+			t -= v * 10;
+			if (t < 0) { t += 256; }
+			idata[pos] = t;
+			pos++;
+			t = idata[pos];
+			t -= v * 21.23553;
+			if (t < 0) { t += 256; }
+			idata[pos] = t;
+			pos++;
+			t = idata[pos];
+			t -= v * 46.72232;
+			if (t < 0) { t += 256; }
+			idata[pos] = t;
+			pos += 2;
+		}
+	}
+};
+
+// ------------------------------------------------------------
+// MELT MELT MELT MELT
+effects[effects.length] = function(imageData, centerX, centerY, radius) {
+	var x, y, pos, horizDistFromCenter, verticalDistFromCenter, v;
+	for (y = imageData.height-1; y >= 1; y--) {
+		for (x = 0; x < imageData.width; x++) {
+			pos = 4 * (imageData.width * y + x);
+			horizDistFromCenter = x-centerX;
+			verticalDistFromCenter = y-centerY;
+			v = 1 - (horizDistFromCenter * horizDistFromCenter + verticalDistFromCenter * verticalDistFromCenter)/(radius * radius);
+			if (v < 0) { v = 0; }
+			v = v * v;
+			imageData.data[pos] += v * (imageData.data[pos-imageData.width * 4]-imageData.data[pos]);
+			imageData.data[pos + 1] += v * (imageData.data[pos + 1-imageData.width * 4]-imageData.data[pos + 1]);
+			imageData.data[pos + 2] += v * (imageData.data[pos + 2-imageData.width * 4]-imageData.data[pos + 2]);
+		}
+	}
+};
+
+// ------------------------------------------------------------
+function createOurSuperThing() {
+	
+	var view;
+	var effectNumber = 0;
+	var currentEffectNumber;
+	var w;
+	var h;
+	var reach = 50;
+	var mouseX = -1;
+	var mouseY = -1;
+
+	try {
+		view = document.getElementById("view").getContext("2d");
+	} catch(err) {
+		throw "Your web browser does not support " + 
+			"the <canvas> element!";
+	}
+
+	function addClickHandlerToEffectButton(n) {
+		var b = document.getElementById("effectButton" + n);
+		b.onclick = function() {
+			effectNumber = n;
+			var currentEffectNumber;
+			for (currentEffectNumber = 0; currentEffectNumber < effects.length; currentEffectNumber++) {
+				document.getElementById("effectButton" + currentEffectNumber).style.color =
+					(currentEffectNumber === n) ? 'white' : '';
+			}
+			return false;
+		};
+	}
+
+	for (currentEffectNumber = 0; currentEffectNumber < effects.length; currentEffectNumber++) { 
+		addClickHandlerToEffectButton(currentEffectNumber); 
+	}
+	
+	document.getElementsByTagName('nav')[0].onmousedown = function(e) {
+		e.stopPropagation();
+	};
+
+	w = view.canvas.width;
+	h = view.canvas.height;
+
+	function resize() {
+		view.canvas.width = w = window.innerWidth;
+		view.canvas.height = h = window.innerHeight - BOTTOM_BORDER_HEIGHT;
+		view.fillStyle = "rgb(255,255,255)";
+		// clear out the canvas
+		view.fillRect(0, 0, w, h);
+	}
+
+	resize();
+	
+	window.onresize = resize;
+
+	function drawAFrame() {
+		if (mouseX < 0) { 
+			return; 
+		}
+		
+		var xLow = mouseX - reach;
+		var xHigh = mouseX + reach;
+		var yLow = mouseY - reach;
+		var yHigh = mouseY + reach;
+		var imageData;
+
+		if (xLow < 0) { 
+			xLow = 0; 
+		}
+		if (yLow < 0) { 
+			yLow = 0; 
+		}
+		if (xLow > w-1) { 
+			return; 
+		}
+		if (yLow > h-1) { 
+			return; 
+		}
+
+		if (xHigh < xLow + 1) { 
+			xHigh = xLow + 1; 
+		}
+		if (yHigh < yLow + 1) { 
+			yHigh = yLow + 1; 
+		}
+		if (xHigh > w) { 
+			xHigh = w; 
+		}
+		if (yHigh > h) { 
+			yHigh = h; 
+		}
+
+		// get the imageData for the square we are going to affect
+		imageData = view.getImageData(xLow, yLow, xHigh - xLow, yHigh - yLow);
+		// run the effect, which changes the imageData we got
+		effects[effectNumber](imageData, mouseX - xLow, mouseY - yLow, reach);
+		// stuff the imageData back into the canvas
+		view.putImageData(imageData, xLow, yLow);
+		
+		if (reach < MAX_REACH) { 
+			reach++; 
+		}
+
+	}
+
+	function heyTheMouseMoved(e) {
+		if (e.changedTouches &&
+			(e.changedTouches.length >= 1)) {
+				e = e.changedTouches[0];
+		}
+		mouseX = e.pageX;
+		mouseY = e.pageY;
+		reach = MINIMUM_REACH;
+		return false;
+	}
+
+	document.addEventListener('mousemove', heyTheMouseMoved, false);
+	document.addEventListener('touchmove', heyTheMouseMoved, false);
+
+	function preventDefaultProcessing(e) {
+		try { e.preventDefault(); } catch(err) {}
+		return false;
+	}
+
+	document.addEventListener('mousedown', preventDefaultProcessing, false);
+	document.addEventListener('touchstart', preventDefaultProcessing, false);
+	
+	return {
+		drawAFrame: drawAFrame
+	};
+
+}
+
+// ------------------------------------------------------------
+function goGoGo() {
+	var ourSuperThing = null;
+	function step() {
+		try {
+			if (ourSuperThing === null) {
+				ourSuperThing = createOurSuperThing();
+			} else {
+				ourSuperThing.drawAFrame();
+			}
+			setTimeout(step, STEP_MILLISECONDS);
+			error();
+		} catch (err) {
+			error(err);
+		}
+	}
+	step();
+}
+
+// ------------------------------------------------------------
+goGoGo();
+
+</script>
+
+</body>
+</html>
+

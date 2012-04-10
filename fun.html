@@ -1,0 +1,46 @@
+<!DOCTYPE HTML >
+<html>
+<head>
+	<title>Rock the Party</title>
+</head>
+<body>
+	<h1>Wow</h1>
+	<p>This is so fun</p>
+	<script type="text/javascript">
+
+var FunRectangle, myRect;
+
+FunRectangle = (function() {
+
+  var zoobie = 
+  function (height, width) {
+    this.height = height;  // we are setting the values on things we've defined on the prototype
+    this.width = width;
+  }
+
+  zoobie.prototype.height = null;
+  zoobie.prototype.width = null;
+
+  zoobie.prototype.flip = function() {
+    var hold;
+    hold = this.height;
+    this.height = this.width;
+    this.width = hold;
+    return this;
+  };
+
+  zoobie.prototype.area = function() { return this.width * this.height;};
+  zoobie.prototype.isTall = function() { return this.height > this.width;};
+  zoobie.prototype.isSquare = function() {return this.height === this.width;};
+
+  return zoobie;  // the .prototype of this function will be the prototype for the object created
+
+})(); // we run the function included here, so that we get back zoobie, the constructor function (with its prototype properly set)
+
+// now let's use it...
+myRect = new FunRectangle(10, 20);
+alert("Area is: " + myRect.area());
+
+	</script>
+</body>
+</html>
